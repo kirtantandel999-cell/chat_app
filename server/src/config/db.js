@@ -12,12 +12,12 @@ try {
 let cachedConnection = null;
 
 export const connectDB = async () => {
-  if (cachedConnection && mongoose.connection.readyState === 1) {
-    return cachedConnection;
+  if (mongoose.connection.readyState >= 1) {
+    return mongoose.connection;
   }
 
   try {
-    const conn = await mongoose.connect(config.mongoUri, {
+    const conn = await mongoose.connect(process.env.MONGO_URI || config.mongoUri, {
       serverSelectionTimeoutMS: 5000,
     });
     cachedConnection = conn;

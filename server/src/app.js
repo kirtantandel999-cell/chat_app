@@ -6,6 +6,7 @@ import config from "./config/env.js";
 import errorHandler from "./middleware/errorHandler.js";
 
 import apiRoutes from "./routes/index.js";
+import connectDB from "./config/db.js";
 
 const app = express();
 

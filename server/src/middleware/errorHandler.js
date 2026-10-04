@@ -45,9 +45,14 @@ export const errorHandler = (err, req, res, next) => {
     message = "Invalid JSON";
   }
 
+  // Log server errors for visibility
+  if (statusCode === 500) {
+    console.error("Unhandled Server Error:", err);
+  }
+
   // Mask generic internal 500 errors in production
   if (statusCode === 500 && config.nodeEnv === "production") {
-    message = "Something went wrong";
+    message = err.message || "Something went wrong";
   }
 
   const response = {
