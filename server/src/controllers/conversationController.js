@@ -242,17 +242,19 @@ export const markRead = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Upload an attachment and create a message
+// @desc    Send a message (with optional attachment)
 // @route   POST /api/conversations/:id/messages
 // @access  Protected
 export const uploadAttachmentMessage = asyncHandler(async (req, res) => {
   const conversationId = req.params.id;
+  const rawText = req.body?.text;
+  const text = typeof rawText === "string" ? rawText.trim() : "";
 
-  // 1. Verify file was provided
-  if (!req.file) {
+  // 1. Verify either file or text was provided
+  if (!req.file && (!text || text.length === 0)) {
     return res.status(400).json({
       success: false,
-      message: "File is required",
+      message: "Message text or file is required",
     });
   }
 
@@ -291,71 +293,69 @@ export const uploadAttachmentMessage = asyncHandler(async (req, res) => {
     });
   }
 
-  // 5. Validate file type and extension
-  const { valid, kind, message: validationMsg } = validateFileType(
-    req.file.originalname,
-    req.file.mimetype
-  );
-  if (!valid) {
-    return res.status(400).json({
-      success: false,
-      message: validationMsg || "File type not allowed",
-    });
-  }
+  let attachment = null;
 
-  // 6. Validate caption text if provided
-  const rawText = req.body?.text;
-  const text = typeof rawText === "string" ? rawText.trim() : "";
-  if (text.length > 2000) {
-    return res.status(400).json({
-      success: false,
-      message: "Text must be 2000 characters or less",
-    });
-  }
-
-  // 7. Stream file into GridFS
-  const sanitizedName = sanitizeFilename(req.file.originalname);
-  const bucket = getGridFSBucket();
-  const fileId = new mongoose.Types.ObjectId();
-
-  try {
-    await new Promise((resolve, reject) => {
-      const uploadStream = bucket.openUploadStreamWithId(fileId, sanitizedName, {
-        contentType: req.file.mimetype,
+  if (req.file) {
+    // 5. Validate file type and extension
+    const { valid, kind, message: validationMsg } = validateFileType(
+      req.file.originalname,
+      req.file.mimetype
+    );
+    if (!valid) {
+      return res.status(400).json({
+        success: false,
+        message: validationMsg || "File type not allowed",
       });
-      const readable = Readable.from(req.file.buffer);
-      readable.pipe(uploadStream);
-      uploadStream.on("finish", resolve);
-      uploadStream.on("error", reject);
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: "Failed to upload file to storage",
-    });
+    }
+
+    // 6. Stream file into GridFS
+    const sanitizedName = sanitizeFilename(req.file.originalname);
+    const bucket = getGridFSBucket();
+    const fileId = new mongoose.Types.ObjectId();
+
+    try {
+      await new Promise((resolve, reject) => {
+        const uploadStream = bucket.openUploadStreamWithId(fileId, sanitizedName, {
+          contentType: req.file.mimetype,
+        });
+        const readable = Readable.from(req.file.buffer);
+        readable.pipe(uploadStream);
+        uploadStream.on("finish", resolve);
+        uploadStream.on("error", reject);
+      });
+    } catch (err) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to upload file to storage",
+      });
+    }
+
+    attachment = {
+      fileId,
+      filename: sanitizedName,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      kind,
+    };
   }
 
-  // 8. Create message, rollback GridFS on failure
+  // 7. Create message, rollback GridFS on failure
   let message;
   try {
     message = await Message.create({
       conversation: conversation._id,
       sender: req.user._id,
       text,
-      attachment: {
-        fileId,
-        filename: sanitizedName,
-        mimeType: req.file.mimetype,
-        size: req.file.size,
-        kind,
-      },
+      attachment,
     });
 
     conversation.lastMessage = message._id;
     await conversation.save();
   } catch (err) {
-    // Delete orphan file from GridFS
-    await bucket.delete(fileId).catch(() => {});
+    if (attachment?.fileId) {
+      const bucket = getGridFSBucket();
+      await bucket.delete(attachment.fileId).catch(() => {});
+    }
     throw err;
   }
 

@@ -30,6 +30,13 @@ export const chatApi = {
     return res.data;
   },
 
+  sendMessage: async (conversationId, text) => {
+    const res = await api.post(`/conversations/${conversationId}/messages`, {
+      text,
+    });
+    return res.data.data;
+  },
+
   sendAttachment: async (conversationId, file, text = "", onUploadProgress) => {
     const formData = new FormData();
     formData.append("file", file);

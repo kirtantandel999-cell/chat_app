@@ -139,29 +139,37 @@ export const useMessages = (conversationId) => {
     }
   }, [conversationId, hasMore, isFetchingOlder, messages]);
 
-  // Send message via socket with acknowledgement
+  // Send message via socket with REST API fallback (for serverless environments)
   const sendMessage = useCallback(
     async (text) => {
-      if (!socket || !isConnected) {
-        throw new Error("Chat server disconnected. Reconnecting...");
+      if (socket && isConnected) {
+        return new Promise((resolve, reject) => {
+          socket.emit(
+            "message:send",
+            {
+              conversationId,
+              text,
+            },
+            (response) => {
+              if (response?.ok) {
+                resolve(response.message);
+              } else {
+                reject(new Error(response?.error || "Failed to send message"));
+              }
+            }
+          );
+        });
       }
 
-      return new Promise((resolve, reject) => {
-        socket.emit(
-          "message:send",
-          {
-            conversationId,
-            text,
-          },
-          (response) => {
-            if (response?.ok) {
-              resolve(response.message);
-            } else {
-              reject(new Error(response?.error || "Failed to send message"));
-            }
-          }
-        );
+      // REST API fallback when WebSocket is not connected or in serverless environment
+      const message = await chatApi.sendMessage(conversationId, text);
+      setMessages((prev) => {
+        if (prev.some((m) => m._id === message._id)) {
+          return prev;
+        }
+        return [...prev, message];
       });
+      return message;
     },
     [socket, isConnected, conversationId]
   );
