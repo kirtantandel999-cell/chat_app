@@ -1,3 +1,4 @@
+import { Router } from "express";
 import mongoose from "mongoose";
 import authRoutes from "./authRoutes.js";
 import conversationRoutes from "./conversationRoutes.js";
