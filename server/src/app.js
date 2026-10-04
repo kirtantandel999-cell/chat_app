@@ -29,6 +29,17 @@ if (config.nodeEnv === "development") {
 // Body parser
 app.use(express.json());
 
+// Database connection middleware for serverless requests
+app.use("/api", async (req, res, next) => {
+  if (req.path === "/health") return next();
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });
